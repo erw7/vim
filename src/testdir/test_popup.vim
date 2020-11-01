@@ -849,6 +849,50 @@ func Test_popup_position()
   call delete('Xtest')
 endfunc
 
+func Test_popup_position_rl()
+  CheckScreendump
+
+  let lines =<< trim END
+    123456789_123456789_123456789_a
+    123456789_123456789_123456789_b
+                123
+  END
+  call writefile(lines, 'Xtest')
+  let buf = RunVimInTerminal('--cmd "set rightleft" Xtest', {})
+  call term_sendkeys(buf, ":vsplit\<CR>")
+  call term_sendkeys(buf, "\<C-W>l")
+
+  " default pumwidth in left window: overlap in right window
+  call term_sendkeys(buf, "GA\<C-N>")
+  call VerifyScreenDump(buf, 'Test_popup_position_rl_01', {'rows': 8})
+  call term_sendkeys(buf, "\<Esc>u")
+
+  " default pumwidth: fill until right of window
+  call term_sendkeys(buf, "\<C-W>h")
+  call term_sendkeys(buf, "GA\<C-N>")
+  call VerifyScreenDump(buf, 'Test_popup_position_rl_02', {'rows': 8})
+
+  " larger pumwidth: used as minimum width
+  call term_sendkeys(buf, "\<Esc>u")
+  call term_sendkeys(buf, ":set pumwidth=30\<CR>")
+  call term_sendkeys(buf, "GA\<C-N>")
+  call VerifyScreenDump(buf, 'Test_popup_position_rl_03', {'rows': 8})
+
+  " completed text wider than the window and 'pumwidth' smaller than available
+  " space
+  call term_sendkeys(buf, "\<Esc>u")
+  call term_sendkeys(buf, ":set pumwidth=20\<CR>")
+  call term_sendkeys(buf, "ggI123456789_\<Esc>")
+  call term_sendkeys(buf, "jI123456789_\<Esc>")
+  call term_sendkeys(buf, "GA\<C-N>")
+  call VerifyScreenDump(buf, 'Test_popup_position_rl_04', {'rows': 10})
+
+  call term_sendkeys(buf, "\<Esc>u")
+  call StopVimInTerminal(buf)
+  call delete('Xtest')
+endfunc
+
+
 func Test_popup_command()
   CheckScreendump
   CheckFeature menu
