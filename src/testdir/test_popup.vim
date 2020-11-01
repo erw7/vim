@@ -807,7 +807,7 @@ func Test_balloon_split()
         \ "Some comment\n\ntypedef this that;"))
 endfunc
 
-func Test_popup_position()
+func PopupPosition(rl = v:false)
   CheckScreendump
 
   let lines =<< trim END
@@ -816,25 +816,91 @@ func Test_popup_position()
                 123
   END
   call writefile(lines, 'Xtest')
-  let buf = RunVimInTerminal('Xtest', {})
+  let lines =<< trim END
+    func s:gen_item(num)
+      return join(map(range(1, a:num),
+            \  { _, v -> v % 10 ? v % 10 : '_' }), '')
+    endfunc
+
+    func SetScale()
+      call setline(1,
+            \  join(map(range(1, 75),
+            \     { _, v -> v % 10 ? v % 5  ? '-' : '+' : v / 10 }), ''))
+    endfunc
+
+    func CompleteTest1()
+      let item = s:gen_item(20)
+      call complete(col('.'), [item, item[0:9], item[0:14]])
+      return ''
+    endfunc
+
+    func CompleteTest2()
+      let item = s:gen_item(10)
+      call complete(col('.'),
+            \  [{ 'word' : item, 'menu' : item[0:8], 'kind' : 'v' },
+            \   { 'word' : item[0:4], 'menu' : item[0:4], 'kind' : 'f' }, 
+            \   { 'word' : item[0:8], 'menu' : item, 'kind' : 'm' }])
+      return ''
+    endfunc
+
+    func CompleteTest3()
+      let item = s:gen_item(&columns - col('.') + 2)
+      call complete(col('.'),
+            \  [item, item[0:len(item) / 2], item[0:len(item) / 3  * 2]])
+      return ''
+    endfunc
+
+    func CompleteTest4()
+      let item = s:gen_item(&columns + 1)
+      call complete(col('.'),
+            \  [item, item[0:len(item) / 2], item[0:len(item) / 3  * 2]])
+      return ''
+    endfunc
+
+    inoremap <F2> <C-r>=CompleteTest1()<CR>
+    inoremap <F3> <C-r>=CompleteTest2()<CR>
+    inoremap <F4> <C-r>=CompleteTest3()<CR>
+    inoremap <F5> <C-r>=CompleteTest4()<CR>
+  END
+  call writefile(lines, 'Xtest.vim')
+  let buf = RunVimInTerminal((a:rl ? '-c "set rightleft" ' : '')
+        \  .. '-S Xtest.vim Xtest', {})
   call term_sendkeys(buf, ":vsplit\<CR>")
+  if a:rl
+    call term_sendkeys(buf, "\<C-W>l")
+  endif
 
-  " default pumwidth in left window: overlap in right window
+  let dump_file = 'Test_popup_position' .. (a:rl ? '_rl_' : '_')
+  let num = 1
+
+  " 01
+  " default pumwidth in window at beginning of line: overlap in window at
+  " end of line
   call term_sendkeys(buf, "GA\<C-N>")
-  call VerifyScreenDump(buf, 'Test_popup_position_01', {'rows': 8})
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 8})
   call term_sendkeys(buf, "\<Esc>u")
+  let num += 1
 
-  " default pumwidth: fill until right of window
-  call term_sendkeys(buf, "\<C-W>l")
+  " 02
+  " default pumwidth: fill until end of line
+  if a:rl
+    call term_sendkeys(buf, "\<C-W>h")
+  else
+    call term_sendkeys(buf, "\<C-W>l")
+  endif
   call term_sendkeys(buf, "GA\<C-N>")
-  call VerifyScreenDump(buf, 'Test_popup_position_02', {'rows': 8})
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 8})
+  let num += 1
 
+  " 03
   " larger pumwidth: used as minimum width
   call term_sendkeys(buf, "\<Esc>u")
   call term_sendkeys(buf, ":set pumwidth=30\<CR>")
   call term_sendkeys(buf, "GA\<C-N>")
-  call VerifyScreenDump(buf, 'Test_popup_position_03', {'rows': 8})
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 8})
+  let num += 1
 
+  " 04
   " completed text wider than the window and 'pumwidth' smaller than available
   " space
   call term_sendkeys(buf, "\<Esc>u")
@@ -842,12 +908,79 @@ func Test_popup_position()
   call term_sendkeys(buf, "ggI123456789_\<Esc>")
   call term_sendkeys(buf, "jI123456789_\<Esc>")
   call term_sendkeys(buf, "GA\<C-N>")
-  call VerifyScreenDump(buf, 'Test_popup_position_04', {'rows': 10})
-  
-  call term_sendkeys(buf, "\<Esc>u")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 10})
+  let num += 1
+
+  call term_sendkeys(buf, "\<Esc>u:wincmd q\<CR>1G3dd")
+  call term_sendkeys(buf, ":call SetScale()\<CR>")
+
+  " 05
+  " If there is not enough space at the end of a line from the cursor, the
+  " item is truncated if its maximum length is greater than pumwidth
+  call term_sendkeys(buf, ":set pumwidth=15 completeopt+=noselect,noinsert\<CR>")
+  call term_sendkeys(buf, ":call cursor(0, 57)\<CR>i\<F2>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>")
+  let num += 1
+
+  " 06
+  call term_sendkeys(buf, "\<F3>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>\<Esc>")
+  let num += 1
+
+  " 07
+  " If there is not enough space at the end of a line from the cursor, and the
+  " maximum length of the item is less than pum_width, pum_col is moved to the
+  " beginning of the line until the space becomes that length.
+  call term_sendkeys(buf, ":set pumwidth=60\<CR>")
+  call term_sendkeys(buf, "a\<F2>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>")
+  let num += 1
+
+  " 08
+  call term_sendkeys(buf, "\<F3>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>\<Esc>")
+  let num += 1
+
+  " 09
+  " bug
+  " If there is not enough space at the end of a line from the cursor, pum_col
+  " will only move to the beginning of the line until the space is the maximum
+  " length of the item, even if pumwidth is greater than columns.
+  call term_sendkeys(buf, ":set pumwidth=76\<CR>")
+  call term_sendkeys(buf, "a\<F2>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>\<Esc>")
+  let num += 1
+
+  " 10
+  " bug
+  " If there is not enough space at the end of a line from the cursor, pum_col
+  " will only move to the beginning of the line until the space becomes
+  " pumwidth, even if the maximum length of the item is greater than columns.
+  call term_sendkeys(buf, ":set pumwidth=20\<CR>")
+  call term_sendkeys(buf, "a\<F5>")
+  call VerifyScreenDump(buf, printf('%s%02d', dump_file, num), {'rows': 5})
+  call term_sendkeys(buf, "\<C-e>\<ESC>")
+
   call StopVimInTerminal(buf)
   call delete('Xtest')
+  call delete('Xtest.vim')
 endfunc
+
+func Test_popup_position()
+  call PopupPosition()
+endfunc
+
+func Test_popup_position_rl()
+  CheckFeature rightleft
+
+  call PopupPosition(v:true)
+endfunc
+
 
 func Test_popup_command()
   CheckScreendump
