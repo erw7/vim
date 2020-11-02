@@ -94,7 +94,6 @@ pum_display(
     int		selected)	// index of initially selected item, none if
 				// out of range
 {
-    int		def_width;
     int		max_width;
     int		context_lines;
     int		cursor_col;
@@ -107,7 +106,6 @@ pum_display(
 
     do
     {
-	def_width = p_pw;
 	above_row = 0;
 	below_row = cmdline_row;
 
@@ -236,125 +234,45 @@ pum_display(
 	else
 	    pum_scrollbar = 0;
 
-	if (def_width < max_width)
-	    def_width = max_width;
+	// align pum with "cursor_col"
+	pum_col = cursor_col;
 
-	if (((cursor_col < Columns - p_pw
-					   || cursor_col < Columns - max_width)
+	// start with the maximum space available
 #ifdef FEAT_RIGHTLEFT
-		    && !curwin->w_p_rl)
-	       || (curwin->w_p_rl
-			       && (cursor_col > p_pw || cursor_col > max_width)
+	if (curwin->w_p_rl)
+	    pum_width = pum_col - pum_scrollbar + 1;
+	else
 #endif
-	   ))
+	    pum_width = Columns - pum_col - pum_scrollbar;
+
+	if (pum_width > max_width + pum_kind_width + pum_extra_width + 1
+					    && pum_width > p_pw)
 	{
-	    // align pum with "cursor_col"
-	    pum_col = cursor_col;
-
-	    // start with the maximum space available
-#ifdef FEAT_RIGHTLEFT
-	    if (curwin->w_p_rl)
-		pum_width = pum_col - pum_scrollbar + 1;
-	    else
-#endif
-		pum_width = Columns - pum_col - pum_scrollbar;
-
-	    if (pum_width > max_width + pum_kind_width + pum_extra_width + 1
-						&& pum_width > p_pw)
-	    {
-		// the width is more than needed for the items, make it
-		// narrower
-		pum_width = max_width + pum_kind_width + pum_extra_width + 1;
-		if (pum_width < p_pw)
-		    pum_width = p_pw;
-	    }
-	    else if (((cursor_col > p_pw || cursor_col > max_width)
-#ifdef FEAT_RIGHTLEFT
-			&& !curwin->w_p_rl)
-		|| (curwin->w_p_rl && (cursor_col < Columns - p_pw
-			|| cursor_col < Columns - max_width)
-#endif
-		    ))
-	    {
-		// align pum edge with "cursor_col"
-#ifdef FEAT_RIGHTLEFT
-		if (curwin->w_p_rl
-			&& W_ENDCOL(curwin) < max_width + pum_scrollbar + 1)
-		{
-		    pum_col = cursor_col + max_width + pum_scrollbar + 1;
-		    if (pum_col >= Columns)
-			pum_col = Columns - 1;
-		}
-		else if (!curwin->w_p_rl)
-#endif
-		{
-		    if (curwin->w_wincol > Columns - max_width - pum_scrollbar
-							  && max_width <= p_pw)
-		    {
-			// use full width to end of the screen
-			pum_col = Columns - max_width - pum_scrollbar;
-			if (pum_col < 0)
-			    pum_col = 0;
-		    }
-		}
-
-#ifdef FEAT_RIGHTLEFT
-		if (curwin->w_p_rl)
-		    pum_width = pum_col - pum_scrollbar + 1;
-		else
-#endif
-		    pum_width = Columns - pum_col - pum_scrollbar;
-
-		if (pum_width < p_pw)
-		{
-		    pum_width = p_pw;
-#ifdef FEAT_RIGHTLEFT
-		    if (curwin->w_p_rl)
-		    {
-			if (pum_width > pum_col)
-			    pum_width = pum_col;
-		    }
-		    else
-#endif
-		    {
-			if (pum_width >= Columns - pum_col)
-			    pum_width = Columns - pum_col - 1;
-		    }
-		}
-		else if (pum_width > max_width + pum_kind_width
-							  + pum_extra_width + 1
-			    && pum_width > p_pw)
-		{
-		    pum_width = max_width + pum_kind_width
-							 + pum_extra_width + 1;
-		    if (pum_width < p_pw)
-			pum_width = p_pw;
-		}
-	    }
-
-	}
-	else if (Columns < def_width)
-	{
-	    // not enough room, will use what we have
-#ifdef FEAT_RIGHTLEFT
-	    if (curwin->w_p_rl)
-		pum_col = Columns - 1;
-	    else
-#endif
-		pum_col = 0;
-	    pum_width = Columns - 1;
+	    // the width is more than needed for the items, make it
+	    // narrower
+	    pum_width = max_width + pum_kind_width + pum_extra_width + 1;
+	    if (pum_width < p_pw)
+		pum_width = p_pw;
 	}
 	else
 	{
-	    if (max_width > p_pw)
-		max_width = p_pw;	// truncate
+	    max_width = max_width > p_pw ? p_pw : max_width;
+	    max_width = max_width > Columns ? Columns : max_width;
 #ifdef FEAT_RIGHTLEFT
-	    if (curwin->w_p_rl)
+	    if (cursor_col < max_width - 1 && curwin->w_p_rl) {
 		pum_col = max_width - 1;
-	    else
+		pum_width = pum_col - pum_scrollbar + 1;
+	    }
 #endif
+	    if (cursor_col > Columns - max_width
+#ifdef FEAT_RIGHTLEFT
+		     && !curwin->w_p_rl
+#endif
+		    )
+	    {
 		pum_col = Columns - max_width;
-	    pum_width = max_width - pum_scrollbar;
+		pum_width = Columns - pum_col - pum_scrollbar;
+	    }
 	}
 
 	// Set selected item and redraw.  If the window size changed need to
