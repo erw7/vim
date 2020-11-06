@@ -425,18 +425,19 @@ pum_redraw(void)
 				{
 				    char_u	*rt_start = rt;
 				    int		size;
+				    int		remaining = pum_width - pum_col + col;
 
 				    size = vim_strsize(rt);
-				    if (size > pum_width)
+				    if (size > remaining)
 				    {
 					do
 					{
 					    size -= has_mbyte
 						    ? (*mb_ptr2cells)(rt) : 1;
 					    MB_PTR_ADV(rt);
-					} while (size > pum_width);
+					} while (size > remaining);
 
-					if (size < pum_width)
+					if (size < remaining)
 					{
 					    // Most left character requires
 					    // 2-cells but only 1 cell is
