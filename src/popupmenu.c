@@ -414,59 +414,85 @@ pum_redraw(void)
 			st = transstr(s);
 			if (saved != NUL)
 			    *p = saved;
+
+			if (st != NULL) {
+			    int size = 0;
+			    if (
 #ifdef FEAT_RIGHTLEFT
-			if (curwin->w_p_rl)
-			{
-			    if (st != NULL)
+				    curwin->w_p_rl ||
+#endif
+				    pum_scrollbar)
+			    {
+				int	remaining;
+				char_u *st_cur = st;
+
+#ifdef FEAT_RIGHTLEFT
+				if (curwin->w_p_rl)
+				    remaining = pum_width - (pum_col - col);
+				else
+#endif
+				    remaining = pum_width - (col - pum_col);
+
+				if (vim_strsize(st_cur) > remaining) {
+				    do {
+					size += has_mbyte
+					    ?(*mb_ptr2cells)(st_cur) : 1;
+					if (size > remaining) {
+#ifdef FEAT_RIGHTLEFT
+					    if (curwin->w_p_rl)
+					    {
+						// Most left character requires
+						// 2-cells but only 1 cell is
+						// available on screen.  Put a
+						// '<' on the left of the pum
+						// item
+						*(st_cur++) = '<';
+						size--;
+					    }
+					    else
+#endif
+						// Most right character requires
+						// 2-cells but only 1 cell is
+						// available on screen.  Put a
+						// '>' on the right of the pum
+						// item
+						*(st_cur++) = '>';
+
+					    break;
+					}
+					MB_PTR_ADV(st_cur);
+				    } while (size < remaining);
+				    *st_cur = NUL;
+				}
+#ifdef FEAT_RIGHTLEFT
+				else
+				{
+				    size = vim_strsize(st);
+				}
+#endif
+			    }
+#ifdef FEAT_RIGHTLEFT
+			    if (curwin->w_p_rl)
 			    {
 				char_u	*rt = reverse_text(st);
-
-				if (rt != NULL)
-				{
-				    char_u	*rt_start = rt;
-				    int		size;
-				    int		remaining = pum_width - pum_col + col;
-
-				    size = vim_strsize(rt);
-				    if (size > remaining)
-				    {
-					do
-					{
-					    size -= has_mbyte
-						    ? (*mb_ptr2cells)(rt) : 1;
-					    MB_PTR_ADV(rt);
-					} while (size > remaining);
-
-					if (size < remaining)
-					{
-					    // Most left character requires
-					    // 2-cells but only 1 cell is
-					    // available on screen.  Put a
-					    // '<' on the left of the pum
-					    // item
-					    *(--rt) = '<';
-					    size++;
-					}
-				    }
-				    screen_puts_len(rt, (int)STRLEN(rt),
-						   row, col - size + 1, attr);
-				    vim_free(rt_start);
-				}
-				vim_free(st);
+				screen_puts_len(rt, (int)STRLEN(rt),
+					row, col - size + 1, attr);
+				vim_free(rt);
 			    }
-			    col -= width;
-			}
-			else
+			    else
 #endif
-			{
-			    if (st != NULL)
 			    {
 				screen_puts_len(st, (int)STRLEN(st), row, col,
 									attr);
-				vim_free(st);
 			    }
-			    col += width;
+			    vim_free(st);
 			}
+#ifdef FEAT_RIGHTLEFT
+			if (curwin->w_p_rl)
+			    col -= width;
+			else
+#endif
+			    col += width;
 
 			if (*p != TAB)
 			    break;
